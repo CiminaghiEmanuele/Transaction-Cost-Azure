@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Azure Storage Transaction Calculator</title>
+    <meta
+      name="description"
+      content="Professional calculator for Azure Blob Storage and Azure Data Lake Storage Gen2 transaction modeling, volume planning, and pricing-oriented estimation."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="#hero">
+          <span class="brand-mark">ASC</span>
+          <span class="brand-copy">
+            <strong>Azure Storage Transaction Calculator</strong>
+            <span>Blob Storage and ADLS Gen2 workload estimator</span>
+          </span>
+        </a>
+
+        <nav class="topbar-nav" aria-label="Main navigation">
+          <a href="#calculator">Calculator</a>
+          <a href="#interpretation">Cost logic</a>
+          <a href="#glossarySection">Glossary</a>
+          <a href="#sourcesSection">Sources</a>
+        </nav>
+      </header>
+
+      <main>
+        <section id="hero" class="hero">
+          <div class="hero-copy">
+            <span class="hero-badge">Azure architecture and costing companion</span>
+            <h1>Azure Storage Transaction Calculator</h1>
+            <p class="hero-subtitle">
+              Calcola correttamente transazioni, dati e logica di pricing per
+              Blob Storage e ADLS Gen2.
+            </p>
+            <p class="hero-lead">
+              Molte stime Azure Storage falliscono perche considerano solo il
+              costo per TB e ignorano il numero reale di chiamate REST, la
+              granularita dei chunk, l'impatto dei rename e le differenze tra
+              namespace flat e gerarchico.
+            </p>
+
+            <div class="hero-highlights">
+              <article class="hero-chip">
+                <strong>Transaction-aware</strong>
+                <span>Modella upload, read, list, rename e operazioni iterative.</span>
+              </article>
+              <article class="hero-chip">
+                <strong>Pre-sales friendly</strong>
+                <span>Trasforma numeri tecnici in spiegazioni chiare per clienti e stakeholder.</span>
+              </article>
+              <article class="hero-chip">
+                <strong>Deploy-ready</strong>
+                <span>Static site pulito, senza backend obbligatorio, pronto per Azure Static Web Apps.</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="hero-aside">
+            <div class="hero-card">
+              <span class="eyebrow">What this tool helps you answer</span>
+              <ul class="hero-list">
+                <li>Quante write genera davvero un upload chunked.</li>
+                <li>Quando HNS migliora la semantica ma introduce meter aggiuntivi.</li>
+                <li>Quanto pesa il numero di list, rename e accessi ricorsivi.</li>
+                <li>Come impostare una stima tecnica piu vicina al billing model reale.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="calculator" class="workspace">
+          <div class="workspace-main">
+            <form id="calculatorForm" class="calculator-stack" novalidate>
+              <article class="panel section-panel">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">Mode selection</span>
+                    <h2>Namespace strategy</h2>
+                  </div>
+                  <p class="section-note">
+                    Scegli la semantica che meglio rappresenta il workload che
+                    vuoi stimare.
+                  </p>
+                </div>
+
+                <div class="mode-grid">
+                  <label class="mode-card" for="namespace-flat">
+                    <input
+                      id="namespace-flat"
+                      type="radio"
+                      name="namespaceMode"
+                      value="flat"
+                      checked
+                    />
+                    <span class="mode-pill">Blob-oriented</span>
+                    <strong>Flat Namespace</strong>
+                    <p>
+                      Ideale per backup, object storage puro, contenuti statici,
+                      document repository e workload dove le directory sono piu
+                      convenzioni che semantica nativa.
+                    </p>
+                    <ul class="mode-points">
+                      <li>Quando sceglierlo: object storage semplice e bulk ingest.</li>
+                      <li>Vantaggi: modello lineare, ottimo per archiviazione e backup.</li>
+                      <li>Limiti: rename e directory semantics non sono native.</li>
+                      <li>Casi tipici: backup, media, data landing zone semplici.</li>
+                    </ul>
+                  </label>
+
+                  <label class="mode-card" for="namespace-hierarchical">
+                    <input
+                      id="namespace-hierarchical"
+                      type="radio"
+                      name="namespaceMode"
+                      value="hierarchical"
+                    />
+                    <span class="mode-pill">File-system semantics</span>
+                    <strong>Hierarchical Namespace</strong>
+                    <p>
+                      Pensato per Azure Data Lake Storage Gen2, analytics,
+                      Spark, Hive, workflow con directory reali, rename e
+                      manipolazioni ricorsive.
+                    </p>
+                    <ul class="mode-points">
+                      <li>Quando sceglierlo: data lake, ETL, analytics e processi directory-heavy.</li>
+                      <li>Vantaggi: rename atomico, path semantics, access model piu ricco.</li>
+                      <li>Limiti: meter aggiuntivi e scelta non reversibile.</li>
+                      <li>Casi tipici: lakehouse, ingestion analytics, staging e curation zones.</li>
+                    </ul>
+                  </label>
+                </div>
+              </article>
+
+              <article class="panel section-panel">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">Core model</span>
+                    <h2>Main calculator</h2>
+                  </div>
+                  <p class="section-note">
+                    Tutti i campi sono modificabili. I risultati si aggiornano
+                    in tempo reale.
+                  </p>
+                </div>
+
+                <div class="form-grid">
+                  <div class="field" data-field="totalDataValue">
+                    <label for="totalDataValue">Dimensione totale dati da caricare</label>
+                    <div class="input-combo">
+                      <input
+                        id="totalDataValue"
+                        name="totalDataValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select id="totalDataUnit" name="totalDataUnit">
+                        <option value="MB">MB</option>
+                        <option value="GB">GB</option>
+                        <option value="TB">TB</option>
+                        <option value="TiB">TiB</option>
+                      </select>
+                    </div>
+                    <p class="field-note">Dataset iniziale o carico di riferimento del workload.</p>
+                  </div>
+
+                  <div class="field" data-field="chunkSizeValue">
+                    <label for="chunkSizeValue">Dimensione chunk o blocco</label>
+                    <div class="input-combo">
+                      <input
+                        id="chunkSizeValue"
+                        name="chunkSizeValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select id="chunkSizeUnit" name="chunkSizeUnit">
+                        <option value="MiB">MiB</option>
+                        <option value="MB">MB</option>
+                        <option value="GiB">GiB</option>
+                      </select>
+                    </div>
+                    <p class="field-note">Serve a capire l'amplificazione delle write in upload chunked.</p>
+                  </div>
+
+                  <div class="field" data-field="fileCount">
+                    <label for="fileCount">Numero di file</label>
+                    <input
+                      id="fileCount"
+                      name="fileCount"
+                      type="number"
+                      min="1"
+                      step="1"
+                    />
+                    <p class="field-note">La stima usa una distribuzione uniforme della dimensione media per file.</p>
+                  </div>
+
+                  <div class="field" data-field="uploadMethod">
+                    <label class="inline-label" for="uploadMethod">
+                      Metodo di upload
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="put-block-list"
+                        aria-label="Explain upload methods"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <select id="uploadMethod" name="uploadMethod">
+                      <option value="putBlob">Put Blob</option>
+                      <option value="putBlockList">Put Block + Put Block List</option>
+                      <option value="appendPattern">Append pattern</option>
+                      <option value="dataLakePath">Data Lake Path Create + Append + Flush</option>
+                    </select>
+                    <p class="field-note">Seleziona il pattern operativo che piu assomiglia al client reale.</p>
+                  </div>
+
+                  <div class="field" data-field="expectedReads">
+                    <label class="inline-label" for="expectedReads">
+                      Numero di letture previste
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="read-operations"
+                        aria-label="Explain read operations"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="expectedReads"
+                      name="expectedReads"
+                      type="number"
+                      min="0"
+                      step="1"
+                    />
+                    <p class="field-note">Logical read calls o accessi di lettura attesi nello scenario.</p>
+                  </div>
+
+                  <div class="field" data-field="expectedLists">
+                    <label class="inline-label" for="expectedLists">
+                      Numero di list previste
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="path-list"
+                        aria-label="Explain list operations"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="expectedLists"
+                      name="expectedLists"
+                      type="number"
+                      min="0"
+                      step="1"
+                    />
+                    <p class="field-note">Container list in flat mode, iterative list in HNS mode.</p>
+                  </div>
+
+                  <div class="field" data-field="expectedRenames">
+                    <label class="inline-label" for="expectedRenames">
+                      Numero di rename previste
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="rename-path"
+                        aria-label="Explain rename operations"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="expectedRenames"
+                      name="expectedRenames"
+                      type="number"
+                      min="0"
+                      step="1"
+                    />
+                    <p class="field-note">Molto importante per workload analytics con directory e staging.</p>
+                  </div>
+
+                  <div class="field" data-field="iterativeOperations">
+                    <label class="inline-label" for="iterativeOperations">
+                      Numero di operazioni iterative previste
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="iterative-write-operations"
+                        aria-label="Explain iterative operations"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="iterativeOperations"
+                      name="iterativeOperations"
+                      type="number"
+                      min="0"
+                      step="1"
+                    />
+                    <p class="field-note">Usalo per recursive ACL, traversal o altre azioni non banalmente lineari.</p>
+                  </div>
+
+                  <div class="field" data-field="monthlyRetrievalValue">
+                    <label class="inline-label" for="monthlyRetrievalValue">
+                      Data retrieval mensile
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="data-retrieval"
+                        aria-label="Explain data retrieval"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <div class="input-combo">
+                      <input
+                        id="monthlyRetrievalValue"
+                        name="monthlyRetrievalValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select id="monthlyRetrievalUnit" name="monthlyRetrievalUnit">
+                        <option value="GB">GB</option>
+                        <option value="GiB">GiB</option>
+                        <option value="TB">TB</option>
+                        <option value="TiB">TiB</option>
+                      </select>
+                    </div>
+                    <p class="field-note">Volume dati letto o scaricato nel mese, separato dal semplice count delle read.</p>
+                  </div>
+
+                  <div class="field" data-field="monthlyWriteValue">
+                    <label class="inline-label" for="monthlyWriteValue">
+                      Data write mensile
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="data-write"
+                        aria-label="Explain data write"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <div class="input-combo">
+                      <input
+                        id="monthlyWriteValue"
+                        name="monthlyWriteValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select id="monthlyWriteUnit" name="monthlyWriteUnit">
+                        <option value="GB">GB</option>
+                        <option value="GiB">GiB</option>
+                        <option value="TB">TB</option>
+                        <option value="TiB">TiB</option>
+                      </select>
+                    </div>
+                    <p class="field-note">Volume dati scritto nel mese oltre al caricamento iniziale di riferimento.</p>
+                  </div>
+
+                  <div class="field" data-field="monthlyGrowthValue">
+                    <label for="monthlyGrowthValue">Growth mensile dei dati</label>
+                    <div class="input-combo">
+                      <input
+                        id="monthlyGrowthValue"
+                        name="monthlyGrowthValue"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select id="monthlyGrowthUnit" name="monthlyGrowthUnit">
+                        <option value="GB">GB</option>
+                        <option value="GiB">GiB</option>
+                        <option value="TB">TB</option>
+                        <option value="TiB">TiB</option>
+                      </select>
+                    </div>
+                    <p class="field-note">Serve per stimare storage medio del mese e traiettoria di costo.</p>
+                  </div>
+                </div>
+
+                <div id="uploadMethodHelper" class="helper-callout" aria-live="polite"></div>
+              </article>
+
+              <article class="panel section-panel">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">Pricing assumptions</span>
+                    <h2>Billing meter profile</h2>
+                  </div>
+                  <p class="section-note">
+                    I preset usano sample rates pubblicati in Microsoft Learn
+                    come esempio illustrativo. Sostituiscili con i prezzi del
+                    tuo pricing calculator reale.
+                  </p>
+                </div>
+
+                <div class="form-grid compact-grid">
+                  <div class="field" data-field="pricingProfileId">
+                    <label for="pricingProfileId">Pricing preset</label>
+                    <select id="pricingProfileId" name="pricingProfileId"></select>
+                    <p class="field-note">Puoi partire da un preset e poi modificare ogni singolo rate.</p>
+                  </div>
+
+                  <div class="field" data-field="storagePerGiB">
+                    <label for="storagePerGiB">Storage per GiB-month</label>
+                    <input
+                      id="storagePerGiB"
+                      name="storagePerGiB"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Capacita media del mese, non solo dataset iniziale.</p>
+                  </div>
+
+                  <div class="field" data-field="writePer10k">
+                    <label class="inline-label" for="writePer10k">
+                      Write ops per 10,000
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="write-operations"
+                        aria-label="Explain write pricing"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="writePer10k"
+                      name="writePer10k"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Per ADLS Gen2 considera spesso i blocchi da 4 MiB fatturabili.</p>
+                  </div>
+
+                  <div class="field" data-field="readPer10k">
+                    <label class="inline-label" for="readPer10k">
+                      Read ops per 10,000
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="read-operations"
+                        aria-label="Explain read pricing"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="readPer10k"
+                      name="readPer10k"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Per HNS puo essere utile confrontare count logico e charge units da retrieval.</p>
+                  </div>
+
+                  <div class="field" data-field="listPer10k">
+                    <label class="inline-label" for="listPer10k">
+                      Flat list ops per 10,000
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="path-list"
+                        aria-label="Explain list pricing"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="listPer10k"
+                      name="listPer10k"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Usato soprattutto in Flat Namespace per list e container operations.</p>
+                  </div>
+
+                  <div class="field" data-field="iterativeReadPer10k">
+                    <label class="inline-label" for="iterativeReadPer10k">
+                      Iterative read per 10,000
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="iterative-read-operations"
+                        aria-label="Explain iterative read pricing"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="iterativeReadPer10k"
+                      name="iterativeReadPer10k"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Rilevante per Path List e simili nel namespace gerarchico.</p>
+                  </div>
+
+                  <div class="field" data-field="iterativeWritePer100">
+                    <label class="inline-label" for="iterativeWritePer100">
+                      Iterative write per 100
+                      <button
+                        type="button"
+                        class="info-button"
+                        data-term="iterative-write-operations"
+                        aria-label="Explain iterative write pricing"
+                      >
+                        i
+                      </button>
+                    </label>
+                    <input
+                      id="iterativeWritePer100"
+                      name="iterativeWritePer100"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Tipicamente associato a rename e operazioni ricorsive in HNS.</p>
+                  </div>
+
+                  <div class="field" data-field="dataRetrievalPerGiB">
+                    <label for="dataRetrievalPerGiB">Data retrieval per GiB</label>
+                    <input
+                      id="dataRetrievalPerGiB"
+                      name="dataRetrievalPerGiB"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Spesso zero in hot tier, non zero in cool o cold.</p>
+                  </div>
+
+                  <div class="field" data-field="dataWritePerGiB">
+                    <label for="dataWritePerGiB">Data write per GiB</label>
+                    <input
+                      id="dataWritePerGiB"
+                      name="dataWritePerGiB"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                    />
+                    <p class="field-note">Nelle tabelle Blob e spesso free, ma lasciato editabile per trasparenza.</p>
+                  </div>
+
+                  <div class="field" data-field="metadataOverheadPercent">
+                    <label for="metadataOverheadPercent">Metadata overhead %</label>
+                    <input
+                      id="metadataOverheadPercent"
+                      name="metadataOverheadPercent"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                    />
+                    <p class="field-note">Usalo per stimare l'overhead HNS su directory e metadata. In flat di solito resta 0.</p>
+                  </div>
+                </div>
+              </article>
+            </form>
+
+            <article class="panel section-panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Ready-made scenarios</span>
+                  <h2>Esempi pronti</h2>
+                </div>
+                <p class="section-note">
+                  Clicca un caso per popolare tutti gli input e vedere una
+                  spiegazione architetturale contestuale.
+                </p>
+              </div>
+              <div id="examplesGrid" class="examples-grid"></div>
+              <div id="exampleNarrative" class="example-narrative" aria-live="polite"></div>
+            </article>
+          </div>
+
+          <aside class="workspace-side">
+            <section class="results-panel panel sticky-panel">
+              <div class="results-header">
+                <div>
+                  <span class="eyebrow">Scenario output</span>
+                  <h2>Results and rationale</h2>
+                </div>
+                <span class="badge badge-info">Technical estimate only</span>
+              </div>
+
+              <p class="results-disclaimer">
+                Questa e una stima tecnica orientata al billing model. Il
+                pricing finale Azure dipende da region, tier, redundancy,
+                commercial agreement, endpoint usato e pattern reali lato
+                applicazione.
+              </p>
+
+              <div class="actions-row">
+                <button id="copyResultsButton" type="button" class="button button-primary">
+                  Copia risultati
+                </button>
+                <button id="exportResultsButton" type="button" class="button button-secondary">
+                  Esporta riepilogo
+                </button>
+                <button id="printResultsButton" type="button" class="button button-tertiary">
+                  Stampa / PDF
+                </button>
+                <button id="resetButton" type="button" class="button button-ghost">
+                  Reset
+                </button>
+              </div>
+
+              <p id="actionFeedback" class="action-feedback" aria-live="polite"></p>
+
+              <div id="resultModeSummary" class="result-summary-banner" aria-live="polite"></div>
+
+              <div id="metricsGrid" class="result-card-grid" aria-live="polite"></div>
+
+              <div class="stack-card">
+                <div class="stack-card-header">
+                  <h3>Formula usata</h3>
+                  <span class="pill">Visible logic</span>
+                </div>
+                <ul id="formulaList" class="formula-list"></ul>
+              </div>
+
+              <div class="stack-card">
+                <div class="stack-card-header">
+                  <h3>Stima costi</h3>
+                  <span class="pill">Billing-oriented</span>
+                </div>
+                <div id="costBreakdown" class="cost-breakdown"></div>
+              </div>
+
+              <div class="stack-card">
+                <div class="stack-card-header">
+                  <h3>Note architetturali</h3>
+                  <span class="pill">Interpretation</span>
+                </div>
+                <ul id="architectureNotes" class="notes-list"></ul>
+              </div>
+
+              <div id="warningsPanel" class="stack-card warnings-card">
+                <div class="stack-card-header">
+                  <h3>Warning intelligenti</h3>
+                  <span class="pill pill-warning">Sanity checks</span>
+                </div>
+                <div id="warningsList" class="warnings-list"></div>
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section id="interpretation" class="panel section-panel interpretation-panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">How to read the estimate</span>
+              <h2>Come interpretare davvero i costi</h2>
+            </div>
+            <p class="section-note">
+              Questi box sono pensati per aiutare prevendita, cloud architect e
+              team engineering a spiegare bene il perche di una stima.
+            </p>
+          </div>
+
+          <div class="insight-grid">
+            <article class="insight-card">
+              <strong>Non ragionare per file, ragiona per chiamate REST</strong>
+              <p>
+                Il costo non dipende solo da quanti file esistono, ma da quante
+                operazioni effettive genera il client: upload, commit, list,
+                rename, traversal e retrieval.
+              </p>
+            </article>
+
+            <article class="insight-card">
+              <strong>Un file grande puo generare migliaia di write</strong>
+              <p>
+                Se un file viene caricato a blocchi, ogni blocco produce una
+                write aggiuntiva. Il commit finale del file e un'ulteriore
+                operazione, quindi il chunk size incide moltissimo.
+              </p>
+            </article>
+
+            <article class="insight-card">
+              <strong>Nel namespace gerarchico entrano in gioco meter iterativi</strong>
+              <p>
+                List, rename e operazioni ricorsive diventano centrali in
+                workload analytics, Spark e data engineering. Ignorarle porta a
+                sottostime ricorrenti.
+              </p>
+            </article>
+
+            <article class="insight-card">
+              <strong>La scelta Flat vs Hierarchical non e solo prezzo per GB</strong>
+              <p>
+                Il vero trade-off e tra semantica del workload, rename atomico,
+                tempi di job, overhead metadata e comportamento applicativo
+                reale. Il costo per GB da solo non basta.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="glossarySection" class="panel section-panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Glossary and tooltips</span>
+              <h2>Spiegazione dettagliata delle voci</h2>
+            </div>
+            <p class="section-note">
+              Ogni termine include definizione semplice, spiegazione tecnica ed
+              esempio pratico.
+            </p>
+          </div>
+
+          <div id="glossaryGrid" class="glossary-grid"></div>
+        </section>
+
+        <section id="sourcesSection" class="panel section-panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Official Microsoft references</span>
+              <h2>Fonti ufficiali Microsoft</h2>
+            </div>
+            <p class="section-note">
+              Il catalogo e mantenuto in un file JavaScript separato per essere
+              aggiornato facilmente.
+            </p>
+          </div>
+
+          <div id="sourcesGrid" class="sources-grid"></div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>
+          Azure Storage Transaction Calculator. Built as a static, client-side
+          tool for Azure architects, pre-sales engineers, cloud teams and
+          developers.
+        </p>
+      </footer>
+    </div>
+
+    <dialog id="termDialog" class="term-dialog">
+      <form method="dialog" class="term-dialog-body">
+        <div class="term-dialog-header">
+          <div>
+            <span class="eyebrow">Glossary detail</span>
+            <h3 id="termDialogTitle">Term</h3>
+          </div>
+          <button type="submit" class="dialog-close" aria-label="Close dialog">
+            x
+          </button>
+        </div>
+
+        <div class="term-detail">
+          <h4>Definizione semplice</h4>
+          <p id="termDialogSimple"></p>
+        </div>
+
+        <div class="term-detail">
+          <h4>Spiegazione tecnica</h4>
+          <p id="termDialogTechnical"></p>
+        </div>
+
+        <div class="term-detail">
+          <h4>Esempio pratico</h4>
+          <p id="termDialogExample"></p>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
